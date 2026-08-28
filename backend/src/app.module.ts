@@ -15,7 +15,9 @@ import { OrderModule } from './order/order.module';
     }),
     MongooseModule.forRootAsync({
       useFactory: (configService: ConfigService) => ({
-        uri: configService.get<string>('DATABASE_URL') || 'mongodb://localhost:27017/practicum',
+        uri:
+          configService.get<string>('DATABASE_URL') ||
+          'mongodb://localhost:27017/prac',
       }),
       inject: [ConfigService],
     }),
