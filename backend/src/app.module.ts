@@ -16,13 +16,17 @@ import { OrderModule } from './order/order.module';
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const url = new URL(configService.getOrThrow<string>('DATABASE_URL'));
+        const driver = configService.getOrThrow<string>('DATABASE_DRIVER');
+
+        if (driver !== 'postgres') {
+          throw new Error(`Unsupported database driver: ${driver}`);
+        }
 
         return {
-          type: 'postgres' as const,
-          host: url.hostname,
-          port: Number(url.port || 5432),
-          database: url.pathname.slice(1),
+          type: driver,
+          host: configService.getOrThrow<string>('DATABASE_HOST'),
+          port: Number(configService.getOrThrow<string>('DATABASE_PORT')),
+          database: configService.getOrThrow<string>('DATABASE_NAME'),
           username: configService.getOrThrow<string>('DATABASE_USERNAME'),
           password: configService.getOrThrow<string>('DATABASE_PASSWORD'),
           autoLoadEntities: true,
