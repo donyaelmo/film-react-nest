@@ -1,14 +1,14 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Film } from '../films/entities/film.entity';
 import { Schedule } from '../films/entities/schedule.entity';
 import { FilmDto, ScheduleDto } from '../films/dto/films.dto';
 import { FilmRecord, ScheduleRecord } from './film.types';
+import {
+  SessionNotFoundError,
+  SeatAlreadyTakenError,
+} from './repository.errors';
 
 @Injectable()
 export class FilmsRepository {
@@ -38,14 +38,14 @@ export class FilmsRepository {
     return { total: items.length, items };
   }
 
-  async findById(id: string): Promise<FilmRecord> {
+  async findById(id: string): Promise<FilmRecord | null> {
     const film = await this.films.findOne({
       where: { id },
       relations: { schedule: true },
     });
 
     if (!film) {
-      throw new NotFoundException(`Film ${id} not found`);
+      return null;
     }
 
     const schedule: ScheduleRecord[] = film.schedule.map((session) => ({
@@ -77,8 +77,11 @@ export class FilmsRepository {
 
   async findSchedule(
     id: string,
-  ): Promise<{ total: number; items: ScheduleDto[] }> {
+  ): Promise<{ total: number; items: ScheduleDto[] } | null> {
     const film = await this.findById(id);
+    if (!film) {
+      return null;
+    }
 
     const items = film.schedule.map((session) => ({
       ...session,
@@ -115,14 +118,14 @@ export class FilmsRepository {
         });
 
         if (!currentSession) {
-          throw new NotFoundException(`Session ${session.id} not found`);
+          throw new SessionNotFoundError(session.id);
         }
 
         const current = currentSession.taken;
 
         for (const seat of added) {
           if (current.includes(seat)) {
-            throw new BadRequestException(`Seat ${seat} is already taken`);
+            throw new SeatAlreadyTakenError(seat);
           }
         }
 
