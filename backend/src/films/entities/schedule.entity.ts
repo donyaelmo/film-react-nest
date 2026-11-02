@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Film } from './film.entity';
+import { arrayTextTransformer } from './array-text.transformer';
 
 @Entity('schedules')
 export class Schedule {
@@ -27,8 +28,8 @@ export class Schedule {
   @Column({ type: 'double precision' })
   price: number;
 
-  @Column({ type: 'text' })
-  taken: string;
+  @Column({ type: 'text', transformer: arrayTextTransformer })
+  taken: string[];
 
   @ManyToOne(() => Film, { nullable: true })
   @JoinColumn({ name: 'filmId' })

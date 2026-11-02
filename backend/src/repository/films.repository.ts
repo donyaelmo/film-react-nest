@@ -27,7 +27,7 @@ export class FilmsRepository {
       id: film.id,
       rating: film.rating,
       director: film.director,
-      tags: this.parseTags(film.tags),
+      tags: film.tags,
       title: film.title,
       about: film.about,
       description: film.description,
@@ -55,12 +55,12 @@ export class FilmsRepository {
       rows: session.rows,
       seats: session.seats,
       price: session.price,
-      taken: this.parseTaken(session.taken),
+      taken: session.taken,
     }));
 
     const result: FilmRecord = {
       ...film,
-      tags: this.parseTags(film.tags),
+      tags: film.tags,
       schedule,
     };
 
@@ -118,7 +118,7 @@ export class FilmsRepository {
           throw new NotFoundException(`Session ${session.id} not found`);
         }
 
-        const current = this.parseTaken(currentSession.taken);
+        const current = currentSession.taken;
 
         for (const seat of added) {
           if (current.includes(seat)) {
@@ -126,7 +126,7 @@ export class FilmsRepository {
           }
         }
 
-        currentSession.taken = JSON.stringify([...current, ...added]);
+        currentSession.taken = [...current, ...added];
 
         await manager.save(currentSession);
       }
@@ -137,18 +137,5 @@ export class FilmsRepository {
     }
 
     return film;
-  }
-
-  private parseTags(value: string): string[] {
-    return value
-      ? value
-          .split(',')
-          .map((tag) => tag.trim())
-          .filter(Boolean)
-      : [];
-  }
-
-  private parseTaken(value: string): string[] {
-    return value ? (JSON.parse(value) as string[]) : [];
   }
 }

@@ -1,5 +1,6 @@
 import { Column, Entity, PrimaryGeneratedColumn, OneToMany } from 'typeorm';
 import { Schedule } from './schedule.entity';
+import { arrayTextTransformer } from './array-text.transformer';
 
 @Entity('films')
 export class Film {
@@ -12,8 +13,8 @@ export class Film {
   @Column({ type: 'varchar' })
   director: string;
 
-  @Column({ type: 'text' })
-  tags: string;
+  @Column({ type: 'text', transformer: arrayTextTransformer })
+  tags: string[];
 
   @Column({ type: 'varchar' })
   image: string;
