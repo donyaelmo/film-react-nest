@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import * as path from 'node:path';
-import { MongooseModule } from '@nestjs/mongoose';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { FilmsModule } from './films/films.module';
 import { OrderModule } from './order/order.module';
@@ -13,13 +13,26 @@ import { OrderModule } from './order/order.module';
       isGlobal: true,
       cache: true,
     }),
-    MongooseModule.forRootAsync({
-      useFactory: (configService: ConfigService) => ({
-        uri:
-          configService.get<string>('DATABASE_URL') ||
-          'mongodb://localhost:27017/prac',
-      }),
+    TypeOrmModule.forRootAsync({
       inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const driver = configService.getOrThrow<string>('DATABASE_DRIVER');
+
+        if (driver !== 'postgres') {
+          throw new Error(`Unsupported database driver: ${driver}`);
+        }
+
+        return {
+          type: driver,
+          host: configService.getOrThrow<string>('DATABASE_HOST'),
+          port: Number(configService.getOrThrow<string>('DATABASE_PORT')),
+          database: configService.getOrThrow<string>('DATABASE_NAME'),
+          username: configService.getOrThrow<string>('DATABASE_USERNAME'),
+          password: configService.getOrThrow<string>('DATABASE_PASSWORD'),
+          autoLoadEntities: true,
+          synchronize: false,
+        };
+      },
     }),
     FilmsModule,
     OrderModule,

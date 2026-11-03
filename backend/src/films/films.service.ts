@@ -1,5 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { FilmsRepository } from '../repository/films.repository';
+import {
+  SessionNotFoundError,
+  SeatAlreadyTakenError,
+} from '../repository/repository.errors';
 import { GetFilmsResponseDto, GetScheduleResponseDto } from './dto/films.dto';
 import { FilmDocument } from './films.schema';
 
@@ -12,14 +20,38 @@ export class FilmsService {
   }
 
   async findSchedule(id: string): Promise<GetScheduleResponseDto> {
-    return this.filmsRepository.findSchedule(id);
+    const schedule = await this.filmsRepository.findSchedule(id);
+
+    if (!schedule) {
+      throw new NotFoundException(`Film ${id} not found`);
+    }
+
+    return schedule;
   }
 
   async findById(id: string): Promise<FilmDocument> {
-    return this.filmsRepository.findById(id);
+    const film = await this.filmsRepository.findById(id);
+
+    if (!film) {
+      throw new NotFoundException(`Film ${id} not found`);
+    }
+
+    return film;
   }
 
   async save(film: FilmDocument): Promise<FilmDocument> {
-    return this.filmsRepository.save(film);
+    try {
+      return await this.filmsRepository.save(film);
+    } catch (error) {
+      if (error instanceof SessionNotFoundError) {
+        throw new NotFoundException(error.message);
+      }
+
+      if (error instanceof SeatAlreadyTakenError) {
+        throw new BadRequestException(error.message);
+      }
+
+      throw error;
+    }
   }
 }

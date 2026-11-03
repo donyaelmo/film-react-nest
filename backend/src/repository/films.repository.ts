@@ -1,58 +1,144 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { Film } from '../films/entities/film.entity';
+import { Schedule } from '../films/entities/schedule.entity';
 import { FilmDto, ScheduleDto } from '../films/dto/films.dto';
-import { Film, FilmDocument, Schedule } from '../films/films.schema';
+import { FilmRecord, ScheduleRecord } from './film.types';
+import {
+  SessionNotFoundError,
+  SeatAlreadyTakenError,
+} from './repository.errors';
 
 @Injectable()
 export class FilmsRepository {
-  constructor(@InjectModel(Film.name) private filmModel: Model<FilmDocument>) {}
+  private readonly snapshots = new WeakMap<FilmRecord, Map<string, string[]>>();
+
+  constructor(
+    @InjectRepository(Film)
+    private readonly films: Repository<Film>,
+    private readonly dataSource: DataSource,
+  ) {}
 
   async findAll(): Promise<{ total: number; items: FilmDto[] }> {
-    const items = await this.filmModel
-      .find()
-      .select('-schedule -_id -__v')
-      .lean();
+    const films = await this.films.find();
 
-    return {
-      total: items.length,
-      items: items as FilmDto[],
-    };
+    const items = films.map((film) => ({
+      id: film.id,
+      rating: film.rating,
+      director: film.director,
+      tags: film.tags,
+      title: film.title,
+      about: film.about,
+      description: film.description,
+      image: film.image,
+      cover: film.cover,
+    }));
+
+    return { total: items.length, items };
   }
 
-  async findById(id: string): Promise<FilmDocument> {
-    const item = await this.filmModel.findOne({ id });
-    if (!item) {
-      throw new NotFoundException(`Film ${id} not found`);
+  async findById(id: string): Promise<FilmRecord | null> {
+    const film = await this.films.findOne({
+      where: { id },
+      relations: { schedule: true },
+    });
+
+    if (!film) {
+      return null;
     }
-    return item;
+
+    const schedule: ScheduleRecord[] = film.schedule.map((session) => ({
+      id: session.id,
+      daytime: session.daytime,
+      hall: session.hall,
+      rows: session.rows,
+      seats: session.seats,
+      price: session.price,
+      taken: session.taken,
+    }));
+
+    const result: FilmRecord = {
+      ...film,
+      tags: film.tags,
+      schedule,
+    };
+
+    const snapshot = new Map<string, string[]>();
+
+    for (const session of schedule) {
+      snapshot.set(session.id, [...session.taken]);
+    }
+
+    this.snapshots.set(result, snapshot);
+
+    return result;
   }
 
   async findSchedule(
     id: string,
-  ): Promise<{ total: number; items: ScheduleDto[] }> {
-    const item = await this.findById(id);
-    const items = this.mapSchedule(item.schedule);
+  ): Promise<{ total: number; items: ScheduleDto[] } | null> {
+    const film = await this.findById(id);
+    if (!film) {
+      return null;
+    }
 
-    return {
-      total: items.length,
-      items,
-    };
-  }
-
-  async save(film: FilmDocument): Promise<FilmDocument> {
-    return film.save();
-  }
-
-  private mapSchedule(schedule: Schedule[]): ScheduleDto[] {
-    return schedule.map(({ id, daytime, hall, rows, seats, price, taken }) => ({
-      id,
-      daytime,
-      hall: String(hall),
-      rows,
-      seats,
-      price,
-      taken: taken ?? [],
+    const items = film.schedule.map((session) => ({
+      ...session,
+      hall: String(session.hall),
     }));
+
+    return { total: items.length, items };
+  }
+
+  async save(film: FilmRecord): Promise<FilmRecord> {
+    const snapshot = this.snapshots.get(film);
+
+    if (!snapshot) {
+      throw new Error('Film was not loaded through the repository');
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      for (const session of film.schedule) {
+        const previous = snapshot.get(session.id);
+
+        if (!previous) {
+          continue;
+        }
+
+        const added = session.taken.filter((seat) => !previous.includes(seat));
+
+        if (added.length === 0) {
+          continue;
+        }
+
+        const currentSession = await manager.findOne(Schedule, {
+          where: { id: session.id },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!currentSession) {
+          throw new SessionNotFoundError(session.id);
+        }
+
+        const current = currentSession.taken;
+
+        for (const seat of added) {
+          if (current.includes(seat)) {
+            throw new SeatAlreadyTakenError(seat);
+          }
+        }
+
+        currentSession.taken = [...current, ...added];
+
+        await manager.save(currentSession);
+      }
+    });
+
+    for (const session of film.schedule) {
+      snapshot.set(session.id, [...session.taken]);
+    }
+
+    return film;
   }
 }
