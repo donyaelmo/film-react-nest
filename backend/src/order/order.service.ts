@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { FilmsService } from '../films/films.service';
+import { FilmDocument } from '../films/films.schema';
 import {
   CreateOrderDto,
   GetOrderResponseDto,
@@ -23,9 +24,14 @@ export class OrderService {
     }
 
     const resultTickets: OrderResultDto[] = [];
+    const films = new Map<string, FilmDocument>();
 
     for (const ticket of tickets) {
-      const film = await this.filmsService.findById(ticket.film);
+      let film = films.get(ticket.film);
+      if (!film) {
+        film = await this.filmsService.findById(ticket.film);
+        films.set(ticket.film, film);
+      }
 
       const session = film.schedule.find((s) => s.id === ticket.session);
       if (!session) {
@@ -42,13 +48,14 @@ export class OrderService {
       }
 
       session.taken = [...taken, seatKey];
-      await this.filmsService.save(film);
 
       resultTickets.push({
         ...ticket,
         id: crypto.randomUUID(),
       });
     }
+
+    await this.filmsService.saveAll([...films.values()]);
 
     return {
       total: resultTickets.length,
