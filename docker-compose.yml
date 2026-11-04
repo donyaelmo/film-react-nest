@@ -1,0 +1,90 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_CDN_URL: ${VITE_CDN_URL}
+    image: ghcr.io/donyaelmo/film-react-nest-frontend:latest
+    restart: unless-stopped
+    volumes:
+      - frontend:/frontend-dist
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /frontend-dist/index.html"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: dockerfile
+    image: ghcr.io/donyaelmo/film-react-nest-backend:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - internal
+
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./backend/test/prac.init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./backend/test/prac.films.sql:/docker-entrypoint-initdb.d/02-films.sql:ro
+      - ./backend/test/prac.shedules.sql:/docker-entrypoint-initdb.d/03-schedules.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  server:
+    build:
+      context: ./nginx
+      dockerfile: dockerfile
+    image: ghcr.io/donyaelmo/film-react-nest-server:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - frontend:/var/www/html:ro
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - internal
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin:/var/lib/pgadmin
+    depends_on:
+      - database
+    networks:
+      - internal
+
+volumes:
+  frontend:
+  database:
+  pgadmin:
+
+networks:
+  internal:

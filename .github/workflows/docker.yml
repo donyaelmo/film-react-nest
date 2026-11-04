@@ -1,0 +1,56 @@
+name: build and push docker images
+
+on:
+  push:
+    branches:
+      - main
+      - review-2
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+
+      - name: set up docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/dockerfile
+          push: true
+          tags: ghcr.io/donyaelmo/film-react-nest-backend:latest
+
+      - name: build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/dockerfile
+          push: true
+          tags: ghcr.io/donyaelmo/film-react-nest-frontend:latest
+          build-args: |
+            VITE_API_URL=/api/afisha
+            VITE_CDN_URL=/content/afisha
+
+      - name: build and push server
+        uses: docker/build-push-action@v6
+        with:
+          context: ./nginx
+          file: ./nginx/dockerfile
+          push: true
+          tags: ghcr.io/donyaelmo/film-react-nest-server:latest

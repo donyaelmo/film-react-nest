@@ -91,29 +91,31 @@ export class FilmsRepository {
     return { total: items.length, items };
   }
 
-  async save(film: FilmRecord): Promise<FilmRecord> {
-    const snapshot = this.snapshots.get(film);
+  async saveAll(films: FilmRecord[]): Promise<FilmRecord[]> {
+    const changes = films.flatMap((film) => {
+      const snapshot = this.snapshots.get(film);
 
-    if (!snapshot) {
-      throw new Error('Film was not loaded through the repository');
-    }
+      if (!snapshot) {
+        throw new Error('Film was not loaded through the repository');
+      }
+
+      return film.schedule.flatMap((session) => {
+        const previous = snapshot.get(session.id);
+        const added = previous
+          ? session.taken.filter((seat) => !previous.includes(seat))
+          : [];
+
+        return added.length > 0 ? [{ filmId: film.id, session, added }] : [];
+      });
+    });
+
+    // Lock sessions in a consistent order for orders spanning multiple sessions.
+    changes.sort((a, b) => a.session.id.localeCompare(b.session.id));
 
     await this.dataSource.transaction(async (manager) => {
-      for (const session of film.schedule) {
-        const previous = snapshot.get(session.id);
-
-        if (!previous) {
-          continue;
-        }
-
-        const added = session.taken.filter((seat) => !previous.includes(seat));
-
-        if (added.length === 0) {
-          continue;
-        }
-
+      for (const { filmId, session, added } of changes) {
         const currentSession = await manager.findOne(Schedule, {
-          where: { id: session.id },
+          where: { id: session.id, film: { id: filmId } },
           lock: { mode: 'pessimistic_write' },
         });
 
@@ -135,10 +137,13 @@ export class FilmsRepository {
       }
     });
 
-    for (const session of film.schedule) {
-      snapshot.set(session.id, [...session.taken]);
+    for (const film of films) {
+      const snapshot = this.snapshots.get(film);
+      for (const session of film.schedule) {
+        snapshot.set(session.id, [...session.taken]);
+      }
     }
 
-    return film;
+    return films;
   }
 }

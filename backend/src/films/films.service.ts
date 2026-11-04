@@ -39,9 +39,9 @@ export class FilmsService {
     return film;
   }
 
-  async save(film: FilmDocument): Promise<FilmDocument> {
+  async saveAll(films: FilmDocument[]): Promise<FilmDocument[]> {
     try {
-      return await this.filmsRepository.save(film);
+      return await this.filmsRepository.saveAll(films);
     } catch (error) {
       if (error instanceof SessionNotFoundError) {
         throw new NotFoundException(error.message);

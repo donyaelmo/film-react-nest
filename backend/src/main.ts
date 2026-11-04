@@ -2,9 +2,13 @@ import { NestFactory } from '@nestjs/core';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { AppModule } from './app.module';
 import 'dotenv/config';
+import { TskvLogger } from './logger/tskv.logger';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+  });
+  app.useLogger(new TskvLogger());
   app.setGlobalPrefix('api/afisha');
   app.enableCors();
 
